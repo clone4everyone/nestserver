@@ -2,7 +2,7 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
-
+const cloudinary=require("cloudinary")
 const User = require("../models/User");
 
 /* Configuration Multer for File Upload */
@@ -21,17 +21,19 @@ const upload = multer({ storage });
 router.post("/register", upload.single("profileImage"), async (req, res) => {
   try {
     /* Take all information from the form */
-    const { name,email, password } = req.body;
-
-    /* The uploaded file is available as req.file */
-    const profileImage = req.file;
-
+    const { name,email, password ,profileImage} = req.body;
+    const myCloud = await cloudinary.v2.uploader.upload(profileImage, {
+      folder: "avatars",
+      width: 150,
+      crop: "scale",
+    });
+  //  console.log(profileImag)
     if (!profileImage) {
       return res.status(400).send("No file uploaded");
     }
 
     /* path to the uploaded profile photo */
-    const profileImagePath = profileImage.path;
+    // const profileImagePath = profileImage.path;
 
     /* Check if user exists */
     const existingUser = await User.findOne({ email });
@@ -48,9 +50,9 @@ router.post("/register", upload.single("profileImage"), async (req, res) => {
       firstname:name,
       email,
       password: hashedPassword,
-      profileImagepath:profileImagePath,
+      profileImagepath:myCloud.url,
     });
-
+    console.log(newUser);
     /* Save the new User */
     await newUser.save();
 

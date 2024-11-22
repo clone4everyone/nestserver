@@ -1,99 +1,75 @@
 const router = require("express").Router();
 const multer = require("multer");
-
+const cloudinary=require("cloudinary")
 const Listing = require("../models/Listing");
 const User = require("../models/User")
 
 /* Configuration Multer for File Upload */
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "public/uploads/"); // Store uploaded files in the 'uploads' folder
-  },
-  filename: function (req, file, cb) {
-    cb(null, file.originalname); // Use the original file name
+// const storage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, "public/uploads/"); // Store uploaded files in the 'uploads' folder
+//   },
+//   filename: function (req, file, cb) {
+//     cb(null, file.originalname); // Use the original file name
+//   },
+// });
+// const storage = multer.memoryStorage(); 
+const upload = multer({
+  storage:  multer.diskStorage({
+      destination: function (req, file, cb) {
+        cb(null, "public/uploads/"); // Store uploaded files in the 'uploads' folder
+      },
+      filename: function (req, file, cb) {
+        cb(null, file.originalname); // Use the original file name
+      },
+    }),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // Set to 50MB or adjust as needed
+    fieldSize: 50 * 1024 * 1024, // Adjust field size limit if needed
   },
 });
 
-const upload = multer({ storage });
-
-/* CREATE LISTING */
-router.post("/create", upload.array("listingPhotos"), async (req, res) => {
+router.post("/create", async (req, res) => {
   try {
-    /* Take the information from the form */
-    const {
-      creator,
-      category,
-      type,
-      streetAddress,
-      aptSuite,
-      city,
-      province,
-      country,
-      guestCount,
-      bedroomCount,
-      bedCount,
-      bathroomCount,
-      amenities,
-      title,
-      description,
-      highlight,
-      highlightDesc,
-      price,
-    } = req.body;
-    if(category===""){
-      return res.status(400).send("No Category is Selected")
+    const { formFields, listingPhotos } = req.body;
+
+    console.log("Received form fields:", formFields);
+    console.log("Received listing photos:", listingPhotos);
+
+    // Validate if listingPhotos were received
+    if (!listingPhotos || listingPhotos.length === 0) {
+      console.log("No photos uploaded");
+      return res.status(400).send("No photos uploaded.");
     }
 
-    if(type===""){
-      return res.status(400).send("No Type is Selected")
-    }
-    if(amenities.length===0){
-      return res.status(400).send("No Amenities is Selected")
-    }
-    // if(category===""){
-    //   return res.status(400).send("No Category is Selected")
-    // }
-    // if(category===""){
-    //   return res.status(400).send("No Category is Selected")
-    // }
-    const listingPhotos = req.files
+    // Upload each photo to Cloudinary
+    const uploadPromises = listingPhotos.map(async (photo) => {
+      return cloudinary.uploader.upload(photo, {
+        folder: "avatars",
+        width: 150,
+        crop: "scale",
+      });
+    });
 
-    if (!listingPhotos) {
-      return res.status(400).send("No file uploaded.")
-    }
+    const uploadedPhotoUrls = await Promise.all(uploadPromises);
 
-    const listingPhotoPaths = listingPhotos.map((file) => file.path)
-
+    // Create a new listing with uploaded photo URLs
     const newListing = new Listing({
-      creator,
-      category,
-      type,
-      streetAddress,
-      aptSuite,
-      city,
-      province,
-      country,
-      guestCount,
-      bedroomCount,
-      bedCount,
-      bathroomCount,
-      amenities,
-      listingPhotoPaths,
-      title,
-      description,
-      highlight,
-      highlightDesc,
-      price,
-    })
+      ...formFields, // Spread form fields
+      listingPhotoPaths: uploadedPhotoUrls.map((result) => result.url),
+    });
 
-    await newListing.save()
+    // Save the listing to the database
+    await newListing.save();
 
-    res.status(200).json(newListing)
+    res.status(201).json(newListing);
   } catch (err) {
-    res.status(409).json({ message: "Fail to create Listing", error: err.message })
-    console.log(err)
+    console.error("Error creating listing:", err);
+    res.status(500).json({ message: "Failed to create listing", error: err.message });
   }
 });
+
+
 
 /* GET lISTINGS BY CATEGORY */
 router.get("/", async (req, res) => {
